@@ -5,7 +5,21 @@ import { Link } from "react-router-dom";
 export default class UrGame extends React.Component {
   // This is the wrapper class that holds the game state and manages rendering
   // It also controls the top level game logic, passing props to sub-logic components
-  state = null
+  state = {
+    ruleset: "official",
+    board: this.setupGameBoard("official"),
+    curTeam: 1,
+    lastRoll: 0,
+    tokens: {
+      team1: 7,
+      team2: 7
+    },
+    points: {
+      team1: 0,
+      team2: 0
+    },
+    loopCount: 0
+  }
 
   constructor(props) {
     super(props);
@@ -13,7 +27,7 @@ export default class UrGame extends React.Component {
       ruleset: "official",
       board: this.setupGameBoard("official"),
       curTeam: 1,
-      lastRoll: this.diceRoll(4),
+      lastRoll: 0,
       tokens: {
         team1: 7,
         team2: 7
@@ -21,11 +35,13 @@ export default class UrGame extends React.Component {
       points: {
         team1: 0,
         team2: 0
-      }
+      },
+      loopCount: 0
     }
   }
 
   componentDidMount() {
+    this.setState({lastRoll: this.diceRoll(4)})
 
   }
 
@@ -49,8 +65,12 @@ export default class UrGame extends React.Component {
 
   // This is the function that updates the game state based on user's input
   handleClick =  (x, y) => {
-    var nextTile = this.moveTile("official", x, y,this.state.lastRoll,this.state.curTeam)
-    this.movePiece([x,y],nextTile)
+    if (this.countValidMoves() == 0) {
+      this.noValidMoves()
+    } else {
+      var nextTile = this.moveTile("official", x, y,this.state.lastRoll,this.state.curTeam)
+      this.movePiece([x,y],nextTile)
+    }
   }
 
   setupGameBoard (ruleSet) {
@@ -93,7 +113,6 @@ export default class UrGame extends React.Component {
   startNewTurn () {
     const nextPlayer = (this.state.curTeam == 1) ? 2 : 1;
     const nextRoll = this.diceRoll(4)
-
     this.setState({curTeam: nextPlayer, lastRoll: nextRoll})
   }
 
@@ -101,14 +120,42 @@ export default class UrGame extends React.Component {
     this.startNewTurn()
   }
 
-  // this function checks all of the player's pieces to count how many can move
-  countValidMoves() {
+  noValidMoves(team) {
+    this.startNewTurn()
+  }
 
+  endGame() {
 
   }
 
+  // count the number of valid moves available
+  countValidMoves() {
+    console.log("checking valid moves")
+    const roll = this.state.lastRoll
+    const team = this.state.curTeam
+    const board = this.state.board
+    var count = 0
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 3; x++) {
+        if (board[y][x][1] == team) {
+          const testTile = [y,x]
+          const endTestTile = this.moveTile("official", y, x, roll, team)
+          console.log("testing move from " + y + ":" + x + " to " + endTestTile)
+          if (this.isMoveValid(testTile,endTestTile)) {
+            console.log("move is valid")
+            count++
+          }
+        }
+      }
+    }
+    console.log("There are " + count + " valid moves")
+    return count
+  }
+
   // fnc checks if the moves are valid
-  isMoveValid (startTile, endTile, team){
+  isMoveValid (startTile, endTile){
+    const team = this.state.curTeam
+    console.log("curTeam is " + team)
     if (endTile == null) {
       return false
     }
@@ -130,7 +177,7 @@ export default class UrGame extends React.Component {
     }
 
     // if the player doesn't have a piece where they're clicking, return false
-    if (startTileState[2] != team) {
+    if (startTileState[1] != team) {
       return false
     }
 
@@ -153,27 +200,27 @@ export default class UrGame extends React.Component {
       var boardState = this.state.board
       var startTileState = boardState[sy][sx]
       var endTileState = boardState[ey][ex]
+
       // if the end tile is occupied by an enemy piece, return it to the owner
       if (endTileState[1] != startTileState[1]) {
         this.returnToken(endTileState[1])
       }
 
-      // if endTile is the last square, increment score
-      var pointsState = {}
+      // place token on new square
+      endTileState[1] = startTileState[1]
+
+      // if endTile is the last square, increment score, and remove token
       if (ey == 5) {
         if (ex == 0) {
           endTileState[1] = 0
-          pointsState = this.scorePoint(1)
+          this.scorePoint(1)
         } else if (ex == 2) {
           endTileState[1] = 0
-          pointsState = this.scorePoint(2)
+          this.scorePoint(2)
         }
-      } else {
-        pointsState = this.state.points
       }
 
       // Update the state of the start and end tiles to show new values
-      endTileState[1] = startTileState[1]
       startTileState[1] = 0
       boardState[sy][sx] = startTileState
       boardState[ey][ex] = endTileState
@@ -181,7 +228,7 @@ export default class UrGame extends React.Component {
       boardState = this.setupStartTokens(boardState)
 
       //update the board's state, forcing re-render of new positions and points
-      this.setState({board: boardState, points: pointsState})
+      this.setState({board: boardState})
 
       // if the end Tile is a "rosette", player gets another go
       if (endTileState[0] == 2) {
@@ -197,15 +244,14 @@ export default class UrGame extends React.Component {
     var state = this.state
     if (team == 1) {
       state.points.team1 += 1
-    } else {
+    } else if (team == 2){
       state.points.team2 += 1
     }
-    return state.points
   }
 
   anotherGo() {
-    const player = (this.state.curTeam == 1) ? 2 : 1
-    this.setState({lastRoll: this.diceRoll(4)})
+    const newRoll = this.diceRoll(4)
+    this.setState({lastRoll: newRoll})
   }
 
   // This function returns a new board state after adding any starter tokens
@@ -213,7 +259,6 @@ export default class UrGame extends React.Component {
     var boardState = inputBoard
     var team1 = this.state.tokens.team1
     var team2 = this.state.tokens.team2
-    console.log("tokens IN is: " + team2)
 
     // if team 1 has tokens available, check their start squares
     if (team1 > 0) {
@@ -232,7 +277,6 @@ export default class UrGame extends React.Component {
         // same as above, but for team 2
         startTile[1] = 2
         this.state.tokens.team2 -= 1
-        console.log("Tokens OUT is: " + this.state.tokens.team2)
       }
       boardState[4][2] = startTile
     }
@@ -252,9 +296,8 @@ export default class UrGame extends React.Component {
       for (let i = 0; i < num; i++) {
         total += Math.floor((Math.random() * 2))
       }
-      if (total == 0) {
+      if (total < 1) {
         this.playerRolledZero()
-        return null
       }
       return total
     }
@@ -264,8 +307,7 @@ export default class UrGame extends React.Component {
   }
   // takes input tile (coords), and returns the tile coordinates n moves forwards
   // returns null if no tile at endPos
-  moveTile (ruleSet, x, y, n, team) {
-    // StartTile is an array with [y,x] coordinates for tile
+  moveTile (ruleSet, y, x, n, team) {
     var tileOrder = [[]]
     if (ruleSet == "official") {
       if (team == 1) {
@@ -276,7 +318,7 @@ export default class UrGame extends React.Component {
 
       var startPos = -1
       for (let i = 0; i < 16; i++) {
-          if (tileOrder[i][0] == x && tileOrder[i][1] == y){
+          if (tileOrder[i][0] == y && tileOrder[i][1] == x){
             startPos = i;
           }
       }
